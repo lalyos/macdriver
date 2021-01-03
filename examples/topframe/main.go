@@ -2,15 +2,12 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"os/user"
-	"path/filepath"
 	"runtime"
-	"time"
+	"strings"
 
 	_ "embed"
 
@@ -18,30 +15,23 @@ import (
 	"github.com/progrium/macdriver/core"
 	"github.com/progrium/macdriver/objc"
 	"github.com/progrium/macdriver/webkit"
-	"github.com/progrium/watcher"
 )
 
 func main() {
 	runtime.LockOSThread()
 	var err error
 
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	dir := filepath.Join(usr.HomeDir, ".topframe")
-	os.MkdirAll(dir, 0755)
-
 	//go:embed index.html
 	var defaultIndex []byte
-	if _, err := os.Stat(filepath.Join(dir, "index.html")); os.IsNotExist(err) {
-		ioutil.WriteFile(filepath.Join(dir, "index.html"), defaultIndex, 0644)
-	}
 
-	srv := http.Server{
-		Handler: http.FileServer(http.Dir(dir)),
-	}
+	http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(defaultIndex)
+	})
+	http.DefaultServeMux.HandleFunc("/exit", func(w http.ResponseWriter, r *http.Request) {
+		os.Exit(0)
+	})
+
+	srv := http.Server{}
 
 	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -49,13 +39,6 @@ func main() {
 	}
 
 	go srv.Serve(ln)
-
-	fw := watcher.New()
-	if err := fw.AddRecursive(dir); err != nil {
-		log.Fatal(err)
-	}
-
-	go fw.Start(400 * time.Millisecond)
 
 	app := cocoa.NSApp_WithDidLaunch(func(notification objc.Object) {
 		config := webkit.WKWebViewConfiguration_New()
@@ -66,6 +49,8 @@ func main() {
 		wv.SetBackgroundColor(cocoa.NSColor_Clear())
 		wv.SetValueForKey(core.False, core.String("drawsBackground"))
 
+		parts := strings.Split(ln.Addr().String(), ":")
+		log.Printf("to exit: curl http://127.1:%s/exit\n", parts[len(parts)-1])
 		url := core.URL(fmt.Sprintf("http://%s", ln.Addr().String()))
 		req := core.NSURLRequest_Init(url)
 		wv.LoadRequest(req)
@@ -77,6 +62,7 @@ func main() {
 		w.SetOpaque(false)
 		w.SetTitleVisibility(cocoa.NSWindowTitleHidden)
 		w.SetTitlebarAppearsTransparent(true)
+		//w.SetIgnoresMouseEvents(false)
 		w.SetIgnoresMouseEvents(true)
 		w.SetLevel(cocoa.NSMainMenuWindowLevel + 2)
 		w.MakeKeyAndOrderFront(w)
@@ -84,6 +70,7 @@ func main() {
 		events := make(chan cocoa.NSEvent)
 		go func() {
 			for e := range events {
+				log.Println("keycode:", e.KeyCode())
 				if e.KeyCode() == 100 {
 					if w.IgnoresMouseEvents() {
 						fmt.Println("Mouse events on")
@@ -98,19 +85,6 @@ func main() {
 		}()
 		cocoa.NSEvent_GlobalMonitorMatchingMask(cocoa.NSEventMaskKeyDown, events)
 
-		go func() {
-			for {
-				select {
-				case event := <-fw.Event:
-					if event.IsDir() {
-						continue
-					}
-					wv.Reload(nil)
-				case <-fw.Closed:
-					return
-				}
-			}
-		}()
 	})
 	//app.SetActivationPolicy(cocoa.NSApplicationActivationPolicyRegular)
 	app.ActivateIgnoringOtherApps(true)

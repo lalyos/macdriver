@@ -2,16 +2,34 @@
 <head>
   <link rel="stylesheet" href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" />
 </head>
-<body class="border-2 border-purple-500 text-white">
-    <div class="w-96 h-64 m-8 absolute right-0 rounded p-4 bg-purple-500">
-      <h2 class="text-3xl my-4 text-center animate-bounce">Hello!</h2>
-      <p class="my-4">
-        Topframe is an always-on-top webview with transparent background that
-        shows (and live updates) whatever you have in <code>~/.topframe</code>.
-      </p>
-      <p class="my-4">
-        Edit and save <code>~/.topframe/index.html</code> to see it in action.
-      </p>
+<body class="border-2 border-purple-500 text-white text-l ">
+    <div class="w-40 rounded bg-purple-500 mx-auto pl-1">
+      <span >Pomodoro:</span>
+      <span id="time"></span>
     </div>
+
+    <script>
+      function startTimer(duration, display) {
+        var timer = duration, minutes, seconds;
+        setInterval(function () {
+            minutes = parseInt(timer / 60, 10);
+            seconds = parseInt(timer % 60, 10);
+
+            minutes = minutes < 10 ? "0" + minutes : minutes;
+            seconds = seconds < 10 ? "0" + seconds : seconds;
+
+            display.textContent = minutes + ":" + seconds;
+
+            if (--timer < 0) {
+              display.textContent = "ENDED!";
+              display.onclick = function() { window.location = window.location.origin + "/exit"; };
+              display.classList.add('animate-ping');
+            }
+        }, 1000);
+      }
+      window.onload = function () {
+        startTimer(25 * 60, document.querySelector('#time'));
+      }
+    </script>
 </body>
 </html>
